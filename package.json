@@ -1,0 +1,21 @@
+{
+  "name": "db-compare",
+  "version": "1.0.0",
+  "description": "Compare two database schemas",
+  "keywords": [
+    "compare database schemas",
+    "compare databases",
+    "database diff",
+    "database schema diff"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ug-code",
+  "license": "MIT",
+  "dependencies": {
+    "mssql": "^10.0.1",
+    "tedious": "^16.6.1"
+  }
+}
