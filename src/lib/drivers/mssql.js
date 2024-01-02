@@ -40,15 +40,38 @@ class Mssql extends BaseDriver {
 
     async compareTables() {
         const query = this.getSql(this.compareType.TABLES);
-        const select = await this.select(query);
-        return select;
+        const data = await this.select(query);
+        const arrData = this.prepareOutArray(data.recordset);
+        return arrData;
     }
+
+    prepareOutArray(data) {
+
+
+        const groupsDbName = data.reduce((x, y) => {
+            (x[y.dbName] = x[y.dbName] || []).push(y);
+            return x;
+        }, {});
+
+        const groupsData = {};
+
+        for (const [key, value] of Object.entries(groupsDbName)) {
+            const columnNameGroup = value.reduce((x, y) => {
+                (x[y.columnName] = x[y.columnName] || []).push(y);
+                return x;
+            }, {});
+            groupsData[key] =columnNameGroup;
+
+        }
+        return groupsData;
+    }
+
 
     getSql(type) {
         return `SELECT DISTINCT
-                    sc.name AS ARRAY_KEY_2,
-                    st.name  + '(' + CAST(sc.length AS varchar(10)) + ')' AS dtype ,
-                    so.name AS ARRAY_KEY_1,
+                    sc.name AS columnName,
+                    st.name  + '(' + CAST(sc.length AS varchar(10)) + ')' AS dType ,
+                    so.name AS dbName,
                     colorder
         FROM
                 <<BASENAME>>..syscolumns sc,
@@ -57,6 +80,7 @@ class Mssql extends BaseDriver {
         WHERE
                 sc.id = so.id AND
                 sc.xtype = st.xtype AND
+                sc.xusertype=st.xusertype AND
                 so.xtype='${type}'
         ORDER BY so.name`;
     }
