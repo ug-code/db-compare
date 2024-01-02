@@ -1,9 +1,11 @@
 const BaseDriver = require('./baseDriver');
 const sql = require('mssql')
+const fs = require('fs');
 
 class Mssql extends BaseDriver {
     connection = null;
-    config = {}
+    fConfig = {}
+    sConfig = {}
 
     compareType = {
         FOREIGN_KEYS: 'F',
@@ -13,9 +15,10 @@ class Mssql extends BaseDriver {
         PROCEDURE: 'P',
     };
 
-    constructor(config = {}) {
+    constructor(fConfig = {}, sConfig) {
         super();
-        this.config = config;
+        this.fConfig = fConfig;
+        this.sConfig = sConfig;
 
 
     }
@@ -38,20 +41,84 @@ class Mssql extends BaseDriver {
 
     }
 
+    async firstTable(query) {
+        const data = await this.select(query, this.fConfig);
+        return this.prepareOutArray(data.recordset);
+    }
+
+    async secondTable(query) {
+        const data = await this.select(query, this.sConfig);
+        return this.prepareOutArray(data.recordset);
+    }
+
     async compareTables() {
         const query = this.getSql(this.compareType.TABLES);
-        const data = await this.select(query);
-        const arrData = this.prepareOutArray(data.recordset);
-        return arrData;
+        let firstTable = await this.firstTable(query);
+        let secondTable = await this.secondTable(query);
+        //fs.writeFileSync('prepareOutArray1.json', JSON.stringify(firstTable));
+        //fs.writeFileSync('prepareOutArray2.json', JSON.stringify(secondTable));
+
+
+        let allTables = [...new Set([...Object.keys(firstTable), ...Object.keys(secondTable)])];
+        allTables.sort();
+        let out = {};
+        for (let v of allTables) {
+            let allFields = [...new Set([...Object.keys(firstTable[v] || {}), ...Object.keys(secondTable[v] || {})])];
+            for (let f of allFields) {
+
+                const checkFTable = firstTable[v]?.[f];
+                const checkSTable = secondTable[v]?.[f];
+                switch (true) {
+                    case (!checkFTable):
+                    {
+                        if (checkSTable){
+                            secondTable[v][f]['isNew'] = true;
+                        }
+                        break;
+                    }
+                    case (!checkSTable):
+                    {
+                        if (checkSTable){
+                            firstTable[v][f]['isNew'] = true;
+                        }
+                        break;
+                    }
+                    case (checkFTable['dType'] && checkSTable['dType'] && (checkFTable['dType'] !== checkSTable['dType'])):
+                    {
+                        firstTable[v][f]['changeType'] = true;
+                        secondTable[v][f]['changeType'] = true;
+                        break;
+                    }
+                }
+            }
+            out[v] = {
+                firstTable: firstTable[v],
+                secondTable: secondTable[v]
+            };
+        }
+
+
+        //fs.writeFileSync('test1.json', JSON.stringify(out));
+
+        //compare db
+        return out;
+
     }
 
     prepareOutArray(data) {
 
-
+        let mArray = {};
+        data.forEach(r => {
+            mArray[r['dbName']] = mArray[r['dbName']] || {};
+            mArray[r['dbName']][r['columnName']] = r;
+        });
+        return mArray;
+/*
         const groupsDbName = data.reduce((x, y) => {
             (x[y.dbName] = x[y.dbName] || []).push(y);
             return x;
         }, {});
+        fs.writeFileSync('groupsDbName.json', JSON.stringify(groupsDbName));
 
         const groupsData = {};
 
@@ -60,10 +127,16 @@ class Mssql extends BaseDriver {
                 (x[y.columnName] = x[y.columnName] || []).push(y);
                 return x;
             }, {});
-            groupsData[key] =columnNameGroup;
+            groupsData[key] =(columnNameGroup);
+
+            break;
+          //  groupsData[key] = columnNameGroup;
 
         }
+        fs.writeFileSync('prepareOutArray.json', JSON.stringify(groupsData));
         return groupsData;
+
+ */
     }
 
 
@@ -72,7 +145,7 @@ class Mssql extends BaseDriver {
                     sc.name AS columnName,
                     st.name  + '(' + CAST(sc.length AS varchar(10)) + ')' AS dType ,
                     so.name AS dbName,
-                    colorder
+                    sc.colorder
         FROM
                 <<BASENAME>>..syscolumns sc,
                 <<BASENAME>>..systypes st,
@@ -82,17 +155,18 @@ class Mssql extends BaseDriver {
                 sc.xtype = st.xtype AND
                 sc.xusertype=st.xusertype AND
                 so.xtype='${type}'
-        ORDER BY so.name`;
+        ORDER BY so.name,sc.colorder`;
     }
 
-    async select(query) {
-        const database = this.config?.database ?? null;
+    async select(query, config = {}) {
+        const database = config?.database ?? null;
 
         let out = [];
         const cleanQuery = query.replaceAll('<<BASENAME>>', database)
-        await sql.connect(this.config);
+        await sql.connect(config);
 
         const result = await sql.query(cleanQuery);
+        await sql.close();
         return result;
 
 
