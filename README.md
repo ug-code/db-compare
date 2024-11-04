@@ -1,5 +1,6 @@
 # db-compare
  Compares two databases
+![image](https://github.com/user-attachments/assets/33d4ae27-f14d-43cb-a8fc-1f2e5e9edb2a)
 
 ## Installation
 coming soon
